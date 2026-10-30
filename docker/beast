@@ -1,0 +1,26 @@
+#!/bin/sh
+# BEAST with the fast BEAGLE build (Eigen dense matrix multiply) and EigenJNI.
+# The BEAGLE build actually loaded is whichever directory $BEAGLE_LIB names;
+# the benchmark drivers set it per run.  See scripts/env.sh for the defaults.
+: "${BEAST_JAR:=/app/beast-mcmc/build/dist/beast.jar}"
+: "${BEAGLE_FAST_LIB:=/opt/beagle-fast/lib}"
+: "${EIGENJNI_LIB:=/opt/eigenjni/lib}"
+BEAGLE_LIB="${BEAGLE_LIB:-$BEAGLE_FAST_LIB}"
+echo "BEAGLE_LIB=$BEAGLE_LIB" >&2
+
+# BEAGLE's JNI library is found through java.library.path, its plugins through
+# LD_LIBRARY_PATH, so both must name the same directory.
+LIBPATH="$BEAGLE_LIB:$EIGENJNI_LIB"
+LD_LIBRARY_PATH="$LIBPATH${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export LD_LIBRARY_PATH
+
+# On arm64 BEAGLE's SSE code (translated through sse2neon) returns a -Inf
+# likelihood for the non-action codon models, so the SSE implementation is
+# turned off there; x86_64 keeps it, as in the paper's runs.
+case "$(uname -m)" in
+    aarch64|arm64) SSE_OFF=-beagle_sse_off ;;
+    *) SSE_OFF= ;;
+esac
+
+exec java ${JAVA_OPTS:--Xms256m -Xmx16g} -Djava.library.path="$LIBPATH" \
+    -cp "$BEAST_JAR" dr.app.beast.BeastMain $SSE_OFF "$@"
